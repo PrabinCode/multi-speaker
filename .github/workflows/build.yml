@@ -3,6 +3,7 @@
 #   - standalone .exe (compressed)    : one small file, no .NET needed, uses a bit more RAM
 #   - standalone .exe (uncompressed)  : one bigger file, no .NET needed, lowest RAM
 #   - portable .zip                   : small, needs the .NET 10 Desktop Runtime installed
+# The release text is that version's section of CHANGELOG.md plus a download guide.
 name: Build and release
 
 on:
@@ -19,9 +20,9 @@ jobs:
       contents: write  # to create the release on tag pushes
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 10.0.x
 
@@ -54,27 +55,64 @@ jobs:
           New-Item -ItemType Directory dist | Out-Null
           Copy-Item out/compressed/MultiSpeaker.exe "dist/MultiSpeaker-$v-win-x64-standalone.exe"
           Copy-Item out/uncompressed/MultiSpeaker.exe "dist/MultiSpeaker-$v-win-x64-standalone-uncompressed.exe"
+          Copy-Item LICENSE, THIRD-PARTY-NOTICES.txt out/portable/
           Compress-Archive -Path out/portable/* -DestinationPath "dist/MultiSpeaker-$v-win-x64-portable.zip"
+
+          # Checksums so people can verify the (unsigned) downloads
+          Get-ChildItem dist | ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
+            Set-Content dist/SHA256SUMS.txt -Encoding ascii
           Get-ChildItem dist | ForEach-Object { "{0}  {1:0.0} MB" -f $_.Name, ($_.Length / 1MB) }
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: MultiSpeaker-${{ steps.version.outputs.version }}
           path: dist/*
 
+      - name: Write release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        run: |
+          $v = '${{ steps.version.outputs.version }}'
+          # This version's section of CHANGELOG.md: from "## v<version>" up to the next "## " heading
+          $changelog = Get-Content CHANGELOG.md -Raw
+          $match = [regex]::Match($changelog, '(?ms)^## v' + [regex]::Escape($v) + '\s*$(.*?)(?=^## |\z)')
+          if (-not $match.Success) { throw "CHANGELOG.md has no '## v$v' section" }
+          $highlights = $match.Groups[1].Value.Trim()
+
+          @"
+          Play your PC's sound on several Bluetooth speakers at once, in sync.
+
+          ## Highlights
+
+          $highlights
+
+          ## Which file should I download?
+
+          | File | Size | Needs .NET installed? | Notes |
+          |---|---|---|---|
+          | ``MultiSpeaker-$v-win-x64-standalone.exe`` | ~70 MB | No | **Recommended.** One file, just run it. |
+          | ``MultiSpeaker-$v-win-x64-standalone-uncompressed.exe`` | ~165 MB | No | Uses about 60 MB less RAM, bigger download. |
+          | ``MultiSpeaker-$v-win-x64-portable.zip`` | < 1 MB | Yes, the [.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0) | Unzip and run ``MultiSpeaker.exe``. |
+
+          **Requirements:** Windows 10 or 11 (64-bit) and a Bluetooth adapter. Sync delay and Match volume also need a microphone.
+
+          > **SmartScreen warning?** The app isn't code-signed. Click **More info**, then **Run anyway**. You can check a download against ``SHA256SUMS.txt`` with ``Get-FileHash <file>`` in PowerShell.
+
+          ## Quick start
+
+          1. Connect your speakers and make the **slowest** one the Windows default output.
+          2. Open MultiSpeaker, tick the other speakers and press **Start**.
+          3. Pause your music and press **Sync delay**, then **Match volume**.
+
+          See the [README](https://github.com/${{ github.repository }}#readme) for details and troubleshooting.
+          "@ | Set-Content release-notes.md -Encoding utf8
+
       - name: Create GitHub release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          files: dist/*
+          name: MultiSpeaker v${{ steps.version.outputs.version }}
+          body_path: release-notes.md
           generate_release_notes: true
-          body: |
-            ## Which file should I download?
-
-            | File | Size | Needs .NET installed? | Notes |
-            |---|---|---|---|
-            | `…-standalone.exe` | ~70 MB | No | **Recommended.** One file, just run it. |
-            | `…-standalone-uncompressed.exe` | ~165 MB | No | Uses about 60 MB less RAM, bigger download. |
-            | `…-portable.zip` | small | Yes ([.NET 10 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/10.0)) | Unzip and run `MultiSpeaker.exe`. |
-
-            Windows 10/11, 64-bit. If SmartScreen warns about an unrecognized app, choose **More info → Run anyway** (the app is not code-signed).
+          fail_on_unmatched_files: true
+          files: dist/*

@@ -131,6 +131,7 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
                 <Image Source="/Assets/MultiSpeaker.ico" Width="18" Height="18" />
                 <TextBlock Text="MultiSpeaker" Margin="10,0,0,0" FontSize="12" VerticalAlignment="Center" />
+                <TextBlock x:Name="VersionText" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center" Style="{StaticResource MutedText}" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <Button x:Name="ThemeButton" Style="{StaticResource CaptionButton}" FontSize="14" Click="OnThemeClick" />

@@ -41,6 +41,7 @@ public partial class MainWindow : Window
         darkMode = settings.DarkMode ?? ThemeManager.SystemPrefersDark();
         ThemeManager.Apply(darkMode);  // before the controls are created so they pick up the theme
         InitializeComponent();
+        VersionText.Text = AppVersion();
         UpdateThemeButton();
         SpeakerList.ItemsSource = rows;
         SourceBox.ItemsSource = sources;
@@ -69,6 +70,16 @@ public partial class MainWindow : Window
     }
 
     // ---- Title bar ----
+
+    /// <summary>"v1.2.3" for release builds, "dev" for local ones.</summary>
+    static string AppVersion()
+    {
+        string? version = typeof(MainWindow).Assembly
+            .GetCustomAttributes(typeof(System.Reflection.AssemblyInformationalVersionAttribute), false)
+            .OfType<System.Reflection.AssemblyInformationalVersionAttribute>()
+            .FirstOrDefault()?.InformationalVersion.Split('+')[0];  // drop the "+commit" suffix
+        return version is null || version.Contains("-dev") ? "dev" : $"v{version}";
+    }
 
     void OnThemeClick(object sender, RoutedEventArgs e)
     {

@@ -92,10 +92,11 @@ dotnet publish -p:PublishProfile=SingleFile      # one standalone exe in publish
 
 ### Releasing
 
-Pushing a tag that starts with `v` builds all three downloads and publishes a GitHub release:
+1. Add a `## vX.Y.Z` section to [CHANGELOG.md](CHANGELOG.md). It becomes the release's highlights.
+2. Push a tag with that version. This builds all three downloads plus `SHA256SUMS.txt` and publishes a GitHub release:
 
 ```powershell
-git tag v1.0.0
+git tag -a v1.0.0 -m "MultiSpeaker v1.0.0"
 git push origin v1.0.0
 ```
 
@@ -114,8 +115,11 @@ Every push and pull request is also built, and the files are attached to the wor
 | `ThemeManager.cs` | Light and dark theme |
 | `DeviceWatcher.cs` | Listens for speakers connecting and disconnecting |
 | `AppSettings.cs` | Settings saved in `%APPDATA%\MultiSpeaker` |
-| `Assets/make-logo.ps1` | Regenerates the app icon |
 
 ## Acknowledgements
 
-Built with [NAudio](https://github.com/naudio/NAudio) for Windows audio (WASAPI) access.
+Built with [NAudio](https://github.com/naudio/NAudio) for Windows audio (WASAPI) access. See [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt).
+
+## License
+
+[MIT](LICENSE) © 2026 Prabin

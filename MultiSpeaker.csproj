@@ -10,6 +10,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>MultiSpeaker</RootNamespace>
     <ApplicationIcon>Assets\MultiSpeaker.ico</ApplicationIcon>
+    <!-- Local builds show "dev"; release builds pass -p:Version from the git tag. -->
+    <Version>0.0.0-dev</Version>
+    <Product>MultiSpeaker</Product>
+    <Copyright>Copyright (c) 2026 Prabin</Copyright>
     <!-- WPF0001: the Fluent ThemeMode API is still marked experimental. -->
     <NoWarn>$(NoWarn);WPF0001</NoWarn>
   </PropertyGroup>
