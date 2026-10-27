@@ -10,6 +10,7 @@ namespace MultiSpeaker;
 sealed class SpeakerRow : INotifyPropertyChanged, IDisposable
 {
     static readonly Guid VolumeContext = Guid.NewGuid();  // tags volume changes made by this app
+    const float MinAutoVolume = 0.05f;  // lowest volume auto sync may set
 
     readonly Dispatcher dispatcher;
     readonly AudioEndpointVolume? volume;
@@ -31,14 +32,16 @@ sealed class SpeakerRow : INotifyPropertyChanged, IDisposable
     public static IReadOnlyList<ChannelMode> ChannelModes { get; } = Enum.GetValues<ChannelMode>();
 
     public MMDevice Device { get; }
-    public string Name => Device.FriendlyName;
+    public string Name { get; }
     public SpeakerOutput? Output { get; set; }
     public bool HasVolume => volume != null;
     public bool CanEditDelay => !isSource;
 
-    public SpeakerRow(MMDevice device, Dispatcher dispatcher)
+    /// <param name="name">The device's FriendlyName, read once by the caller because reading it can be slow.</param>
+    public SpeakerRow(MMDevice device, string name, Dispatcher dispatcher)
     {
         Device = device;
+        Name = name;
         this.dispatcher = dispatcher;
         volumeApplyTimer.Tick += (_, _) => ApplyVolume();
         try
@@ -109,10 +112,15 @@ sealed class SpeakerRow : INotifyPropertyChanged, IDisposable
                 volume.Mute = false;
             volume.MasterVolumeLevel = clamped;
 
+            // Never turn a speaker (nearly) off automatically; a bad measurement shouldn't silence it.
+            bool hitFloor = volume.MasterVolumeLevelScalar < MinAutoVolume;
+            if (hitFloor)
+                volume.MasterVolumeLevelScalar = MinAutoVolume;
+
             updatingFromDevice = true;  // already applied; just show it
             Volume = ToPercent(volume.MasterVolumeLevelScalar);
             updatingFromDevice = false;
-            return Math.Abs(clamped - wanted) < 0.1;
+            return !hitFloor && Math.Abs(clamped - wanted) < 0.1;
         }
         catch (COMException)
         {

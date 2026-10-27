@@ -150,6 +150,7 @@
                 <TextBlock x:Name="VersionText" Margin="6,0,0,0" FontSize="11" VerticalAlignment="Center" Style="{StaticResource MutedText}" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button Style="{StaticResource CaptionButton}" Content="&#xE897;" FontSize="14" ToolTip="Help" Click="OnHelpClick" />
                 <Button x:Name="ThemeButton" Style="{StaticResource CaptionButton}" FontSize="14" Click="OnThemeClick" />
                 <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="Minimize to tray" Click="OnMinimizeClick" />
                 <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#xE922;" Click="OnMaximizeClick" />

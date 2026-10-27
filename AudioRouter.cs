@@ -25,9 +25,9 @@ sealed class AudioRouter : IDisposable
     }
 
     /// <summary>Adds a speaker. Must be called before <see cref="Start"/>.</summary>
-    public SpeakerOutput AddSpeaker(MMDevice device, int delayMs)
+    public SpeakerOutput AddSpeaker(MMDevice device, string name, int delayMs)
     {
-        var output = new SpeakerOutput(device, format.SampleRate, delayMs);
+        var output = new SpeakerOutput(device, name, format.SampleRate, delayMs);
         outputs.Add(output);
         return output;
     }

@@ -89,12 +89,30 @@ public partial class MainWindow : Window
         return version is null || version.Contains("-dev") ? "dev" : $"v{version}";
     }
 
+    HelpWindow? helpWindow;
+
+    void OnHelpClick(object sender, RoutedEventArgs e)
+    {
+        if (helpWindow == null)
+        {
+            helpWindow = new HelpWindow(this, darkMode);
+            helpWindow.Closed += (_, _) => helpWindow = null;
+            helpWindow.Show();
+        }
+        else
+        {
+            helpWindow.Activate();
+        }
+    }
+
     void OnThemeClick(object sender, RoutedEventArgs e)
     {
         darkMode = !darkMode;
         settings.DarkMode = darkMode;
         ThemeManager.Apply(darkMode);
         ThemeManager.ApplyToWindow(this, darkMode);
+        if (helpWindow != null)
+            ThemeManager.ApplyToWindow(helpWindow, darkMode);
         UpdateThemeButton();
     }
 
@@ -149,11 +167,15 @@ public partial class MainWindow : Window
         rows.Clear();
         sources.Clear();
 
-        var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).OrderBy(d => d.FriendlyName);
-        foreach (var device in devices)
+        // Each FriendlyName read walks the device's whole property store through COM, which can take
+        // a long time with some Bluetooth drivers, so read it once per device.
+        var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active)
+            .Select(d => (Device: d, Name: d.FriendlyName))
+            .OrderBy(d => d.Name);
+        foreach (var (device, name) in devices)
         {
             var saved = settings.Speakers.GetValueOrDefault(device.ID);
-            var row = new SpeakerRow(device, Dispatcher)
+            var row = new SpeakerRow(device, name, Dispatcher)
             {
                 IsChecked = saved?.Enabled ?? false,
                 DelayMs = saved?.DelayMs ?? 0,
@@ -163,7 +185,7 @@ public partial class MainWindow : Window
             row.ChannelChanged += OnChannelChanged;
             row.VolumeChanged += OnRowVolumeChanged;
             rows.Add(row);
-            sources.Add(new SourceItem(device, device.FriendlyName));
+            sources.Add(new SourceItem(device, name));
         }
 
         // The source is always the Windows default output, so the dropdown mirrors it.
@@ -411,7 +433,7 @@ public partial class MainWindow : Window
             router.CaptureStopped += ex => OnAudioError("Source", ex);
             foreach (var row in targets)
             {
-                row.Output = router.AddSpeaker(row.Device, row.DelayMs);
+                row.Output = router.AddSpeaker(row.Device, row.Name, row.DelayMs);
                 row.Output.Channel = row.Channel;
                 row.Output.Stopped += (output, ex) => OnAudioError(output.Name, ex);
             }
@@ -521,9 +543,12 @@ public partial class MainWindow : Window
     static string DescribeVolume(SpeakerRow row, SyncCalibrator.Result result) => result.LevelDb switch
     {
         null => "couldn't measure its loudness. Adjust it by ear.",
-        _ when !result.VolumeLimited => $"volume matched at {row.Volume} %.",
-        > 0 => $"lowered to {row.Volume} % but it's still {result.LevelDb:0} dB louder.",
-        _ => $"raised to {row.Volume} % but it's still {-result.LevelDb:0} dB quieter. Lower the source speaker a little and run Match volume again.",
+        <= 3 and >= -3 => $"volume matched at {row.Volume} %.",
+        > 0 when result.VolumeLimited => $"lowered to {row.Volume} %, the lowest Match volume goes, but it's still {result.LevelDb:0} dB louder. " +
+            "Is it much closer to the laptop than the source speaker? Measure from where you sit, or adjust it by ear.",
+        < 0 when result.VolumeLimited => $"raised to {row.Volume} % but it's still {-result.LevelDb:0} dB quieter. " +
+            "Lower the source speaker a little and run Match volume again. (Using the laptop's own speakers as the source? They're right next to the microphone, so they always sound loudest to it.)",
+        _ => $"set to {row.Volume} %, still {Math.Abs(result.LevelDb.Value):0} dB {(result.LevelDb > 0 ? "louder" : "quieter")}. Run Match volume again or adjust it by ear.",
     };
 
     void StopRouting()

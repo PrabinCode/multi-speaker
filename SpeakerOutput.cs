@@ -46,9 +46,9 @@ sealed class SpeakerOutput : IWaveProvider, IDisposable
     /// <summary>Raised from the audio thread when playback stops; the exception is null on a normal stop.</summary>
     public event Action<SpeakerOutput, Exception?>? Stopped;
 
-    public SpeakerOutput(MMDevice device, int sourceSampleRate, int delayMs)
+    public SpeakerOutput(MMDevice device, string name, int sourceSampleRate, int delayMs)
     {
-        Name = device.FriendlyName;
+        Name = name;
         DelayMs = delayMs;
         sourceRate = sourceSampleRate;
 

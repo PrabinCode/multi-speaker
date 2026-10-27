@@ -20,20 +20,33 @@ sealed class SyncCalibrator(
 {
     /// <param name="OffsetMs">&gt; 0: the speaker sounds later than the source. Null: it couldn't be heard.</param>
     /// <param name="LevelDb">Loudness compared with the source after any volume correction (0 = equal).</param>
-    /// <param name="VolumeLimited">The speaker's volume hit 0 % or 100 % before it matched.</param>
+    /// <param name="VolumeLimited">The speaker's volume hit its limit (5 % or 100 %) before it matched.</param>
     public sealed record Result(SpeakerOutput Speaker, int? OffsetMs, double? LevelDb, bool VolumeLimited);
 
     const int Repeats = 3;
-    const int LeadInMs = 100;        // start listening a little before the chirp is due
+    const int LeadInMs = 100;          // start listening a little before the chirp is due
     const int SourceWindowMs = 1000;
-    const int SeparationMs = 400;    // extra delay while measuring, so the two chirps never overlap
-    const int MaskMs = 12;           // around the source's peak: its own room echoes, not the other speaker
+    // While a speaker is measured its delay is raised by this much, so its chirp lands well clear of the
+    // source's. It's then looked for 150-1150 ms after the source's chirp (offsets of -450..+550 ms).
+    const int SeparationMs = 600;
+    const int TargetMinMs = 150;
+    const int TargetMaxMs = 1150;
+    const int SourceSearchMs = 150;    // the source's chirp lands within this of where it was first found
     const float MinSignalToNoise = 8;
-    const float MinPeakRatio = 0.1f; // the other speaker's peak must be at least this strong (-20 dB)
+    const double MinAboveRoomDb = 6;   // must beat the source's own room echo in that window by this much
+    const double MaxOffsetSpreadMs = 15;
+    const double MaxLevelSpreadDb = 4;
     const double VolumeToleranceDb = 1.5;
+    const double MaxVolumeStepDb = 10;
     const int VolumeRounds = 3;
 
     sealed record Measurement(double OffsetMs, double LevelDb);
+
+    /// <summary>One recording: where and how strong the source's chirp and the other speaker's chirp were.</summary>
+    sealed record Pair(int SourceIndex, float SourcePeak, int TargetIndex, float TargetPeak)
+    {
+        public double LevelDb => 20 * Math.Log10(Math.Max(TargetPeak, 1e-12f) / SourcePeak);
+    }
 
     CancellationToken cancel;
 
@@ -60,7 +73,7 @@ sealed class SyncCalibrator(
             var sourcePeaks = new List<double>();
             for (int i = 0; i < Repeats; i++)
             {
-                var corr = await MeasureAsync(mic, player, template, SourceWindowMs, cancel);
+                var corr = await MeasureAsync(mic, player, template, LeadInMs, SourceWindowMs, cancel);
                 int peak = ArgMax(corr, 0, corr.Length);
                 if (corr[peak] >= MinSignalToNoise * Median(corr))
                     sourcePeaks.Add(peak);
@@ -83,7 +96,7 @@ sealed class SyncCalibrator(
                 for (int round = 0; matchVolume && round < VolumeRounds && level is double db && Math.Abs(db) > VolumeToleranceDb && !limited; round++)
                 {
                     progress.Report($"Auto sync: matching the volume of {speaker.Name}…");
-                    limited = !changeVolumeDb(speaker, -db);
+                    limited = !changeVolumeDb(speaker, Math.Clamp(-db, -MaxVolumeStepDb, MaxVolumeStepDb));
                     await Task.Delay(300, cancel);  // let the speaker apply it
                     level = (await MeasureSpeakerAsync(mic, player, template, speaker, sourceIndex))?.LevelDb ?? level;
                 }
@@ -102,37 +115,53 @@ sealed class SyncCalibrator(
 
     /// <summary>
     /// Plays chirps with only this extra speaker audible besides the source; returns its timing and loudness
-    /// relative to the source, or null if it couldn't be heard reliably.
+    /// relative to the source, or null if it couldn't be heard reliably (e.g. nothing is plugged into it).
     /// </summary>
     async Task<Measurement?> MeasureSpeakerAsync(MicRecorder mic, ChirpPlayer player, float[] template, SpeakerOutput speaker, int sourceIndex)
     {
+        int rate = mic.SampleRate;
         int originalDelay = speaker.DelayMs;
+        // Normally the speaker is pushed later. If that would exceed the maximum delay, pull it earlier
+        // instead and start listening early enough to catch it.
         int separation = originalDelay + SeparationMs <= SpeakerOutput.MaxDelayMs ? SeparationMs : -SeparationMs;
+        int leadInMs = separation > 0 ? LeadInMs : LeadInMs + TargetMaxMs;
+        int expectedSource = sourceIndex + (leadInMs - LeadInMs) * rate / 1000;
+        int windowMs = expectedSource * 1000 / rate - leadInMs + SourceSearchMs + (separation > 0 ? TargetMaxMs : 0) + 100;
+
         speaker.DelayMs = originalDelay + separation;
         try
         {
             await Task.Delay(200, cancel);  // let the new delay settle
-            int sourceMs = sourceIndex * 1000 / mic.SampleRate;
-            int windowMs = sourceMs + originalDelay + SeparationMs + 1000;
-            int mask = MaskMs * mic.SampleRate / 1000;
+
+            // Room check with the speaker muted: how strong is the source's own echo where this speaker's
+            // chirp will land? A real chirp has to beat it clearly, so silence can't pass for a speaker.
+            speaker.Muted = true;
+            var quiet = await RecordPairAsync(mic, player, template, leadInMs, windowMs, expectedSource, separation);
+            speaker.Muted = false;
+            if (quiet is null)
+                return null;
+
             var offsets = new List<double>();
             var levels = new List<double>();
             for (int i = 0; i < Repeats; i++)
             {
-                var corr = await MeasureAsync(mic, player, template, windowMs, cancel);
-                float noise = Median(corr);
-                int lo = Math.Max(0, sourceIndex - mask), hi = Math.Min(corr.Length, sourceIndex + mask);
-                float sourcePeak = corr[ArgMax(corr, lo, hi)];
-                int before = ArgMax(corr, 0, lo), after = ArgMax(corr, hi, corr.Length);
-                int other = corr[before] > corr[after] ? before : after;
-
-                if (sourcePeak >= MinSignalToNoise * noise && corr[other] >= MinSignalToNoise * noise && corr[other] >= MinPeakRatio * sourcePeak)
-                {
-                    offsets.Add((other - sourceIndex) * 1000.0 / mic.SampleRate - separation);
-                    levels.Add(20 * Math.Log10(corr[other] / sourcePeak));
-                }
+                var pair = await RecordPairAsync(mic, player, template, leadInMs, windowMs, expectedSource, separation);
+                if (pair is null || pair.LevelDb < quiet.LevelDb + MinAboveRoomDb)
+                    continue;
+                offsets.Add((pair.TargetIndex - pair.SourceIndex) * 1000.0 / rate - separation);
+                levels.Add(pair.LevelDb);
             }
-            return offsets.Count >= 2 ? new Measurement(Median(offsets), Median(levels)) : null;
+            if (offsets.Count < 2)
+                return null;
+
+            // Keep only measurements that agree with each other; a stray echo won't.
+            double offset = Median(offsets), level = Median(levels);
+            var agreeing = Enumerable.Range(0, offsets.Count)
+                .Where(i => Math.Abs(offsets[i] - offset) <= MaxOffsetSpreadMs && Math.Abs(levels[i] - level) <= MaxLevelSpreadDb)
+                .ToList();
+            if (agreeing.Count < 2)
+                return null;
+            return new Measurement(Median(agreeing.Select(i => offsets[i]).ToList()), Median(agreeing.Select(i => levels[i]).ToList()));
         }
         finally
         {
@@ -140,12 +169,31 @@ sealed class SyncCalibrator(
         }
     }
 
+    /// <summary>
+    /// Plays one chirp and finds the source's chirp near where it was first found, then the other
+    /// speaker's chirp in the window its extra delay puts it in. Null if the source wasn't heard.
+    /// </summary>
+    async Task<Pair?> RecordPairAsync(MicRecorder mic, ChirpPlayer player, float[] template, int leadInMs, int windowMs, int expectedSource, int separation)
+    {
+        int rate = mic.SampleRate;
+        var corr = await MeasureAsync(mic, player, template, leadInMs, windowMs, cancel);
+        int search = SourceSearchMs * rate / 1000;
+        int s = ArgMax(corr, Math.Max(0, expectedSource - search), Math.Min(corr.Length, expectedSource + search));
+        if (corr[s] < MinSignalToNoise * Median(corr))
+            return null;
+
+        int near = s + Math.Sign(separation) * TargetMinMs * rate / 1000;
+        int far = s + Math.Sign(separation) * TargetMaxMs * rate / 1000;
+        int t = ArgMax(corr, Math.Clamp(Math.Min(near, far), 0, corr.Length), Math.Clamp(Math.Max(near, far), 0, corr.Length));
+        return new Pair(s, corr[s], t, corr[t]);
+    }
+
     /// <summary>Plays one chirp and returns the correlation of the recording against it, indexed from the lead-in.</summary>
-    static async Task<float[]> MeasureAsync(MicRecorder mic, ChirpPlayer player, float[] template, int windowMs, CancellationToken cancel)
+    static async Task<float[]> MeasureAsync(MicRecorder mic, ChirpPlayer player, float[] template, int leadInMs, int windowMs, CancellationToken cancel)
     {
         long playedAt = await player.PlayAsync().WaitAsync(cancel);
-        long start = Math.Max(0, mic.FrameAt(playedAt) - LeadInMs * mic.SampleRate / 1000);
-        int length = (LeadInMs + windowMs) * mic.SampleRate / 1000 + template.Length;
+        long start = Math.Max(0, mic.FrameAt(playedAt) - leadInMs * mic.SampleRate / 1000);
+        int length = (leadInMs + windowMs) * mic.SampleRate / 1000 + template.Length;
         var signal = await mic.ReadAsync(start, length, cancel);
         return await Task.Run(() => Correlate(signal, template), cancel);
     }
