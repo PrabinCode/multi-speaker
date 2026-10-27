@@ -13,6 +13,12 @@ sealed class AudioRouter : IDisposable
 
     public event Action<Exception?>? CaptureStopped;
 
+    /// <summary>
+    /// Applied to the captured sound before it's sent on. Used to undo the source's own volume when
+    /// Windows applies it in software, since that happens before loopback capture.
+    /// </summary>
+    public volatile float Gain = 1f;
+
     public AudioRouter(MMDevice source)
     {
         capture = new WasapiLoopbackCapture(source);
@@ -52,6 +58,11 @@ sealed class AudioRouter : IDisposable
         else
             for (int i = 0; i < samples; i++)
                 scratch[i] = BitConverter.ToInt16(e.Buffer, i * 2) / 32768f;
+
+        float gain = Gain;
+        if (gain != 1f)
+            for (int i = 0; i < samples; i++)
+                scratch[i] *= gain;
 
         int frames = samples / format.Channels;
         foreach (var output in outputs)

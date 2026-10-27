@@ -23,6 +23,8 @@ public partial class MainWindow : Window
     readonly Forms.ToolStripMenuItem trayStartItem = new("Start");
     // Bluetooth connects fire several notifications in a burst; act once they settle.
     readonly DispatcherTimer deviceSettleTimer = new() { Interval = TimeSpan.FromMilliseconds(1500) };
+    // Follows the source's volume while playing, for speakers whose volume Windows applies in software.
+    readonly DispatcherTimer compensationTimer = new() { Interval = TimeSpan.FromMilliseconds(250) };
     readonly DeviceWatcher watcher;
 
     AudioRouter? router;
@@ -61,6 +63,7 @@ public partial class MainWindow : Window
         tray.Visible = true;
 
         deviceSettleTimer.Tick += (_, _) => { deviceSettleTimer.Stop(); OnDevicesSettled(); };
+        compensationTimer.Tick += (_, _) => UpdateSourceCompensation();
         SourceInitialized += (_, _) => ThemeManager.ApplyToWindow(this, darkMode);
         StateChanged += (_, _) => OnWindowStateChanged();
         Closing += (_, _) => CleanUp();
@@ -437,7 +440,9 @@ public partial class MainWindow : Window
                 row.Output.Channel = row.Channel;
                 row.Output.Stopped += (output, ex) => OnAudioError(output.Name, ex);
             }
+            UpdateSourceCompensation();
             router.Start();
+            compensationTimer.Start();
             if (rows.FirstOrDefault(r => r.IsSource) is { Channel: not ChannelMode.Both } sourceRow)
                 ApplySourceBalance(sourceRow);
             StatusText.Text = $"Playing on {targets.Count} extra speaker(s)";
@@ -551,8 +556,16 @@ public partial class MainWindow : Window
         _ => $"set to {row.Volume} %, still {Math.Abs(result.LevelDb.Value):0} dB {(result.LevelDb > 0 ? "louder" : "quieter")}. Run Match volume again or adjust it by ear.",
     };
 
+    /// <summary>Undo the source's software volume on the copies (see SpeakerRow.LoopbackCompensation).</summary>
+    void UpdateSourceCompensation()
+    {
+        if (router != null)
+            router.Gain = rows.FirstOrDefault(r => r.IsSource)?.LoopbackCompensation() ?? 1f;
+    }
+
     void StopRouting()
     {
+        compensationTimer.Stop();
         RestoreSourceBalance();
         router?.Dispose();
         router = null;

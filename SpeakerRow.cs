@@ -35,6 +35,29 @@ sealed class SpeakerRow : INotifyPropertyChanged, IDisposable
     public string Name { get; }
     public SpeakerOutput? Output { get; set; }
     public bool HasVolume => volume != null;
+
+    /// <summary>
+    /// When this speaker is the source and Windows applies its volume in software (no hardware volume),
+    /// the captured sound is already turned down by it; this gain undoes that for the copies.
+    /// </summary>
+    public float LoopbackCompensation()
+    {
+        try
+        {
+            if (volume == null || (volume.HardwareSupport & EEndpointHardwareSupport.Volume) != 0)
+                return 1f;  // hardware volume: loopback gets the full-level sound
+            if (volume.Mute)
+                return 1f;  // nothing to recover from silence
+            double db = volume.MasterVolumeLevel;  // e.g. -25 dB at 14 %
+            return (float)Math.Pow(10, Math.Min(-db, MaxCompensationDb) / 20);
+        }
+        catch (COMException)
+        {
+            return 1f;
+        }
+    }
+
+    const double MaxCompensationDb = 60;
     public bool CanEditDelay => !isSource;
 
     /// <param name="name">The device's FriendlyName, read once by the caller because reading it can be slow.</param>
