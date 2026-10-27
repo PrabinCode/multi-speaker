@@ -5,6 +5,7 @@ Each version's section is copied into its GitHub release as the highlights.
 ## Unreleased
 
 - **Sound source** now is your laptop's sound output: choosing a speaker in the app makes it the Windows default output, and changing the output in the Windows sound menu updates the app. Before, the two could disagree and the copied sound came from the wrong device.
+- **Channel** for each speaker: *Both*, *Left* or *Right*, so two speakers can play as a real stereo pair. The source speaker uses its Windows balance while playing (restored on Stop and on exit); MultiSpeaker first checks once, with an inaudible tone, that this won't remove that side from the copied sound.
 
 ## v1.0.0
 

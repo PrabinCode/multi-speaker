@@ -28,6 +28,7 @@ static class ThemeManager
         r["WindowBackgroundBrush"] = Brush(dark ? "#202020" : "#F3F3F3");
         r["CardBrush"] = Brush(dark ? "#2B2B2B" : "#FFFFFF");
         r["CardBorderBrush"] = Brush(dark ? "#3A3A3A" : "#E3E3E3");
+        r["FieldBrush"] = Brush(dark ? "#323232" : "#FBFBFB");
         r["TextBrush"] = Brush(dark ? "#FFFFFF" : "#1B1B1B");
         r["MutedTextBrush"] = Brush(dark ? "#A6A6A6" : "#616161");
         r["CaptionHoverBrush"] = Brush(dark ? "#333333" : "#E3E3E3");

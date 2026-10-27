@@ -17,6 +17,7 @@ sealed class SpeakerRow : INotifyPropertyChanged, IDisposable
     readonly DispatcherTimer volumeApplyTimer = new() { Interval = TimeSpan.FromMilliseconds(80) };
     bool isChecked;
     bool isSource;
+    ChannelMode channel;
     bool updatingFromDevice;
     int volumePercent;
     int delayMs;
@@ -25,6 +26,9 @@ sealed class SpeakerRow : INotifyPropertyChanged, IDisposable
     public event Action? CheckedChanged;
     /// <summary>Volume changed, from the box or from outside (e.g. the speaker's buttons or keyboard volume keys).</summary>
     public event Action<SpeakerRow>? VolumeChanged;
+    public event Action<SpeakerRow>? ChannelChanged;
+
+    public static IReadOnlyList<ChannelMode> ChannelModes { get; } = Enum.GetValues<ChannelMode>();
 
     public MMDevice Device { get; }
     public string Name => Device.FriendlyName;
@@ -113,6 +117,19 @@ sealed class SpeakerRow : INotifyPropertyChanged, IDisposable
         catch (COMException)
         {
             return false;
+        }
+    }
+
+    public ChannelMode Channel
+    {
+        get => channel;
+        set
+        {
+            if (!Set(ref channel, value))
+                return;
+            if (Output != null)
+                Output.Channel = value;
+            ChannelChanged?.Invoke(this);
         }
     }
 

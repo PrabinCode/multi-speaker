@@ -31,7 +31,9 @@ public partial class MainWindow : Window
     bool loading;
     bool darkMode;
     bool calibrating;    // auto sync is changing volumes itself; don't link them
+    CancellationTokenSource? calibrationCancel;  // lets Stop interrupt Sync delay / Match volume
     bool applyingLink;
+    bool resettingChannel;  // putting a source back to Both because its balance can't be used
     // Volumes captured when linking started; linked changes scale these so ratios survive hitting 0 or 100 %.
     readonly Dictionary<SpeakerRow, double> linkBase = [];
     string deviceSignature = "";
@@ -64,6 +66,7 @@ public partial class MainWindow : Window
         Closing += (_, _) => CleanUp();
 
         LoadDevices();
+        RestoreSourceBalance();  // in case the last session ended without stopping (e.g. a crash)
         deviceSignature = DeviceSignature();
         watcher = new DeviceWatcher(() => RunOnUi(RestartSettleTimer));
         enumerator.RegisterEndpointNotificationCallback(watcher);
@@ -154,8 +157,10 @@ public partial class MainWindow : Window
             {
                 IsChecked = saved?.Enabled ?? false,
                 DelayMs = saved?.DelayMs ?? 0,
+                Channel = saved?.Channel ?? ChannelMode.Both,
             };
             row.CheckedChanged += OnSpeakerToggled;
+            row.ChannelChanged += OnChannelChanged;
             row.VolumeChanged += OnRowVolumeChanged;
             rows.Add(row);
             sources.Add(new SourceItem(device, device.FriendlyName));
@@ -267,6 +272,61 @@ public partial class MainWindow : Window
             Restart();
     }
 
+    /// <summary>Extra speakers switch sides live; the source needs its balance re-applied.</summary>
+    void OnChannelChanged(SpeakerRow row)
+    {
+        if (!loading && !resettingChannel && row.IsSource && wantRunning)
+            Restart();
+    }
+
+    // ---- Source balance ----
+
+    /// <summary>Splits the source speaker with its Windows balance, after checking once that it's safe.</summary>
+    void ApplySourceBalance(SpeakerRow source)
+    {
+        if (!settings.BalanceSafe.TryGetValue(source.Device.ID, out bool safe))
+        {
+            bool? probed = SourceBalance.Probe(source.Device);
+            if (probed is null)
+            {
+                StatusText.Text = $"Turn up {source.Name} to use {source.Channel} only";
+                return;
+            }
+            safe = probed.Value;
+            settings.BalanceSafe[source.Device.ID] = safe;
+        }
+
+        if (!safe)
+        {
+            resettingChannel = true;
+            source.Channel = ChannelMode.Both;
+            resettingChannel = false;
+            MessageBox.Show(this,
+                $"{source.Name} can't play only one side while it's the sound source: Windows would remove that side " +
+                "from the sound MultiSpeaker copies, too.\n\nMake another speaker the sound source, or keep this one on Both.",
+                "Channel", MessageBoxButton.OK, MessageBoxImage.Information);
+            return;
+        }
+
+        SourceBalance.Apply(source.Device, source.Channel);
+        settings.BalancedDeviceId = source.Device.ID;
+        settings.Save();  // so a crash can't leave the laptop playing one side
+    }
+
+    void RestoreSourceBalance()
+    {
+        if (settings.BalancedDeviceId is not { } id)
+            return;
+        try
+        {
+            using var device = enumerator.GetDevice(id);
+            SourceBalance.Restore(device);
+        }
+        catch (COMException) { }  // device is gone; Windows resets it when it returns
+        settings.BalancedDeviceId = null;
+        settings.Save();
+    }
+
     void OnRefreshClick(object sender, RoutedEventArgs e) => Reload();
 
     /// <summary>Rebuilds the device list and resumes playback if it was running.</summary>
@@ -308,6 +368,7 @@ public partial class MainWindow : Window
 
     void ToggleRunning()
     {
+        calibrationCancel?.Cancel();  // Stop also ends a measurement in progress
         wantRunning = !wantRunning;
         if (wantRunning)
             StartRouting(showErrors: true);
@@ -351,9 +412,12 @@ public partial class MainWindow : Window
             foreach (var row in targets)
             {
                 row.Output = router.AddSpeaker(row.Device, row.DelayMs);
+                row.Output.Channel = row.Channel;
                 row.Output.Stopped += (output, ex) => OnAudioError(output.Name, ex);
             }
             router.Start();
+            if (rows.FirstOrDefault(r => r.IsSource) is { Channel: not ChannelMode.Both } sourceRow)
+                ApplySourceBalance(sourceRow);
             StatusText.Text = $"Playing on {targets.Count} extra speaker(s)";
         }
         catch (Exception ex)
@@ -388,7 +452,9 @@ public partial class MainWindow : Window
             return;
 
         string title = syncDelay ? "Sync delay" : "Match volume";
-        ContentGrid.IsEnabled = false;
+        using var cancel = new CancellationTokenSource();
+        calibrationCancel = cancel;
+        SetCalibrationLock(true);
         calibrating = true;
         try
         {
@@ -397,7 +463,7 @@ public partial class MainWindow : Window
                 targets.Select(r => r.Output!).ToList(),
                 (output, db) => targets.First(r => r.Output == output).ChangeVolumeByDb(db),
                 new Progress<string>(message => StatusText.Text = message));
-            var results = await calibrator.RunAsync(matchVolume: !syncDelay);
+            var results = await calibrator.RunAsync(matchVolume: !syncDelay, cancel.Token);
 
             var report = new List<string>();
             foreach (var result in results)
@@ -415,6 +481,10 @@ public partial class MainWindow : Window
             StatusText.Text = $"{title} finished";
             MessageBox.Show(this, string.Join("\n\n", report), title, MessageBoxButton.OK, MessageBoxImage.Information);
         }
+        catch (OperationCanceledException)
+        {
+            // Stop was pressed; ToggleRunning already updated the status
+        }
         catch (Exception ex)
         {
             StatusText.Text = $"{title} failed";
@@ -423,8 +493,20 @@ public partial class MainWindow : Window
         finally
         {
             calibrating = false;
-            ContentGrid.IsEnabled = true;
+            calibrationCancel = null;
+            SetCalibrationLock(false);
         }
+    }
+
+    /// <summary>While measuring, lock everything except Stop, which cancels the measurement.</summary>
+    void SetCalibrationLock(bool locked)
+    {
+        SourceBox.IsEnabled = !locked;
+        SpeakerCard.IsEnabled = !locked;
+        LinkVolumesBox.IsEnabled = !locked;
+        RefreshButton.IsEnabled = !locked;
+        SyncDelayButton.IsEnabled = !locked && router != null;
+        MatchVolumeButton.IsEnabled = !locked && router != null;
     }
 
     static string ApplyDelay(SpeakerRow row, int offsetMs)
@@ -446,6 +528,7 @@ public partial class MainWindow : Window
 
     void StopRouting()
     {
+        RestoreSourceBalance();
         router?.Dispose();
         router = null;
         foreach (var row in rows)
@@ -486,7 +569,7 @@ public partial class MainWindow : Window
     void SaveSettings()
     {
         foreach (var row in rows)
-            settings.Speakers[row.Device.ID] = new SpeakerSettings { Enabled = row.IsChecked, DelayMs = row.DelayMs };
+            settings.Speakers[row.Device.ID] = new SpeakerSettings { Enabled = row.IsChecked, DelayMs = row.DelayMs, Channel = row.Channel };
         settings.Save();
     }
 }

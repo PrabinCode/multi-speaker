@@ -7,6 +7,7 @@ sealed class SpeakerSettings
 {
     public bool Enabled { get; set; }
     public int DelayMs { get; set; }
+    public ChannelMode Channel { get; set; }
 }
 
 /// <summary>Remembers the chosen source and per-speaker delays in %APPDATA%\MultiSpeaker.</summary>
@@ -14,6 +15,10 @@ sealed class AppSettings
 {
     public bool? DarkMode { get; set; }  // null = follow Windows
     public bool LinkVolumes { get; set; }
+    /// <summary>Per device: can its balance split it while it's the source (see SourceBalance.Probe)?</summary>
+    public Dictionary<string, bool> BalanceSafe { get; set; } = [];
+    /// <summary>Source whose balance we changed; restored on stop, or on the next launch after a crash.</summary>
+    public string? BalancedDeviceId { get; set; }
     public Dictionary<string, SpeakerSettings> Speakers { get; set; } = [];
 
     static readonly string FilePath = Path.Combine(

@@ -35,9 +35,13 @@ sealed class SyncCalibrator(
 
     sealed record Measurement(double OffsetMs, double LevelDb);
 
+    CancellationToken cancel;
+
     /// <param name="matchVolume">Also adjust each speaker's volume to the source's; otherwise only measure.</param>
-    public async Task<IReadOnlyList<Result>> RunAsync(bool matchVolume)
+    /// <param name="cancel">Stops the measurement (e.g. the user pressed Stop); throws OperationCanceledException.</param>
+    public async Task<IReadOnlyList<Result>> RunAsync(bool matchVolume, CancellationToken cancel)
     {
+        this.cancel = cancel;
         MMDevice micDevice;
         try { micDevice = new MMDeviceEnumerator().GetDefaultAudioEndpoint(DataFlow.Capture, Role.Console); }
         catch (System.Runtime.InteropServices.COMException) { throw new InvalidOperationException("No microphone found. Auto sync needs your laptop's microphone."); }
@@ -45,7 +49,7 @@ sealed class SyncCalibrator(
         using var mic = new MicRecorder(micDevice);
         using var player = new ChirpPlayer(source);
         var template = Chirp.Create(mic.SampleRate);
-        await Task.Delay(500);  // let both streams settle
+        await Task.Delay(500, cancel);  // let both streams settle
 
         try
         {
@@ -56,7 +60,7 @@ sealed class SyncCalibrator(
             var sourcePeaks = new List<double>();
             for (int i = 0; i < Repeats; i++)
             {
-                var corr = await MeasureAsync(mic, player, template, SourceWindowMs);
+                var corr = await MeasureAsync(mic, player, template, SourceWindowMs, cancel);
                 int peak = ArgMax(corr, 0, corr.Length);
                 if (corr[peak] >= MinSignalToNoise * Median(corr))
                     sourcePeaks.Add(peak);
@@ -80,7 +84,7 @@ sealed class SyncCalibrator(
                 {
                     progress.Report($"Auto sync: matching the volume of {speaker.Name}…");
                     limited = !changeVolumeDb(speaker, -db);
-                    await Task.Delay(300);  // let the speaker apply it
+                    await Task.Delay(300, cancel);  // let the speaker apply it
                     level = (await MeasureSpeakerAsync(mic, player, template, speaker, sourceIndex))?.LevelDb ?? level;
                 }
 
@@ -107,7 +111,7 @@ sealed class SyncCalibrator(
         speaker.DelayMs = originalDelay + separation;
         try
         {
-            await Task.Delay(200);  // let the new delay settle
+            await Task.Delay(200, cancel);  // let the new delay settle
             int sourceMs = sourceIndex * 1000 / mic.SampleRate;
             int windowMs = sourceMs + originalDelay + SeparationMs + 1000;
             int mask = MaskMs * mic.SampleRate / 1000;
@@ -115,7 +119,7 @@ sealed class SyncCalibrator(
             var levels = new List<double>();
             for (int i = 0; i < Repeats; i++)
             {
-                var corr = await MeasureAsync(mic, player, template, windowMs);
+                var corr = await MeasureAsync(mic, player, template, windowMs, cancel);
                 float noise = Median(corr);
                 int lo = Math.Max(0, sourceIndex - mask), hi = Math.Min(corr.Length, sourceIndex + mask);
                 float sourcePeak = corr[ArgMax(corr, lo, hi)];
@@ -137,13 +141,13 @@ sealed class SyncCalibrator(
     }
 
     /// <summary>Plays one chirp and returns the correlation of the recording against it, indexed from the lead-in.</summary>
-    static async Task<float[]> MeasureAsync(MicRecorder mic, ChirpPlayer player, float[] template, int windowMs)
+    static async Task<float[]> MeasureAsync(MicRecorder mic, ChirpPlayer player, float[] template, int windowMs, CancellationToken cancel)
     {
-        long playedAt = await player.PlayAsync();
+        long playedAt = await player.PlayAsync().WaitAsync(cancel);
         long start = Math.Max(0, mic.FrameAt(playedAt) - LeadInMs * mic.SampleRate / 1000);
         int length = (LeadInMs + windowMs) * mic.SampleRate / 1000 + template.Length;
-        var signal = await mic.ReadAsync(start, length);
-        return await Task.Run(() => Correlate(signal, template));
+        var signal = await mic.ReadAsync(start, length, cancel);
+        return await Task.Run(() => Correlate(signal, template), cancel);
     }
 
     static float[] Correlate(float[] signal, float[] template)
@@ -322,7 +326,7 @@ sealed class SyncCalibrator(
                 return firstFrames + (long)((ticks - firstTicks) * (double)SampleRate / Stopwatch.Frequency);
         }
 
-        public async Task<float[]> ReadAsync(long start, int count)
+        public async Task<float[]> ReadAsync(long start, int count, CancellationToken cancel)
         {
             var deadline = Stopwatch.StartNew();
             while (true)
@@ -336,7 +340,7 @@ sealed class SyncCalibrator(
                 }
                 if (deadline.ElapsedMilliseconds > count * 2000L / SampleRate + 2000)
                     throw new InvalidOperationException("The microphone isn't delivering sound.");
-                await Task.Delay(50);
+                await Task.Delay(50, cancel);
             }
         }
 

@@ -20,6 +20,7 @@ Windows can connect several Bluetooth speakers, but it only plays sound on one o
 - **Per-speaker delay.** Bluetooth speakers lag by different amounts (often 100–300 ms). Delay the faster ones so everything lines up. Changes apply instantly.
 - **Sync delay.** Uses your microphone to measure each speaker and set its delay automatically.
 - **Match volume.** Uses your microphone to make every speaker as loud as the source speaker.
+- **Left / Right channels.** Set one speaker to *Left* and another to *Right* for real stereo across the room.
 - **Link volumes.** Change one speaker's volume (or use your keyboard volume keys) and the others follow by the same ratio.
 - **Stays in sync.** Small differences between the speakers' clocks are corrected continuously, so they don't drift apart over long sessions.
 - **Recovers by itself.** If a speaker disconnects and comes back, or you change the Windows default output, playback picks up again.
@@ -78,6 +79,7 @@ You can always fine-tune by ear with the **−/+** buttons next to each speaker'
 | "Still … ms late at 0 ms delay" | That speaker is slower than the source. Choose it as the **Sound source** instead. |
 | A speaker sounds quiet even at 100 % | Turn up the speaker's own volume buttons, or lower the source speaker and run **Match volume** again. |
 | "Couldn't hear …" during Sync delay or Match volume | Check that the microphone is on, turn the speakers up, and keep the laptop near them. |
+| "Can't play only one side while it's the sound source" | Windows applies that speaker's balance before MultiSpeaker can copy the sound, so splitting it would also remove that side from the other speakers. Make the other speaker the sound source and split that one instead. MultiSpeaker checks this automatically, once per speaker. |
 | Want every speaker to be adjustable | Install a virtual audio device you don't listen to (for example VB-CABLE), choose it as the **Sound source**, then tick all real speakers. |
 
 ## Build from source
@@ -113,6 +115,7 @@ Every push and pull request is also built, and the files are attached to the wor
 | `NumberBox.xaml(.cs)` | The −/+ number box |
 | `ThemeManager.cs` | Light and dark theme |
 | `DeviceWatcher.cs` | Listens for speakers connecting and disconnecting |
+| `SourceBalance.cs` | Left/Right for the source speaker via its Windows balance, with a safety check |
 | `DefaultAudioDevice.cs` | Sets the Windows default output when you pick a sound source |
 | `AppSettings.cs` | Settings saved in `%APPDATA%\MultiSpeaker` |
 

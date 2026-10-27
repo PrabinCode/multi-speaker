@@ -20,8 +20,27 @@
             <ColumnDefinition Width="Auto" />
         </Grid.ColumnDefinitions>
         <RepeatButton Style="{StaticResource StepButton}" Content="&#xE738;" ToolTip="Decrease" Click="OnDecrease" />
-        <TextBox x:Name="Input" Grid.Column="1" Margin="4,0" MinWidth="56"
-                 TextAlignment="Center" VerticalContentAlignment="Center" />
+        <!-- Own template: the Fluent one adds a clear (✕) button that covers the number in a box this narrow. -->
+        <TextBox x:Name="Input" Grid.Column="1" Margin="4,0" MinWidth="56" MinHeight="0"
+                 TextAlignment="Center" Foreground="{DynamicResource TextBrush}" CaretBrush="{DynamicResource TextBrush}">
+            <TextBox.Template>
+                <ControlTemplate TargetType="TextBox">
+                    <Border x:Name="Field" Background="{DynamicResource FieldBrush}" BorderBrush="{DynamicResource CardBorderBrush}"
+                            BorderThickness="1" CornerRadius="4">
+                        <ScrollViewer x:Name="PART_ContentHost" Focusable="False" VerticalAlignment="Center"
+                                      HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Hidden" />
+                    </Border>
+                    <ControlTemplate.Triggers>
+                        <Trigger Property="IsKeyboardFocused" Value="True">
+                            <Setter TargetName="Field" Property="BorderBrush" Value="{DynamicResource MutedTextBrush}" />
+                        </Trigger>
+                        <Trigger Property="IsEnabled" Value="False">
+                            <Setter TargetName="Field" Property="Opacity" Value="0.45" />
+                        </Trigger>
+                    </ControlTemplate.Triggers>
+                </ControlTemplate>
+            </TextBox.Template>
+        </TextBox>
         <RepeatButton Grid.Column="2" Style="{StaticResource StepButton}" Content="&#xE710;" ToolTip="Increase" Click="OnIncrease" />
     </Grid>
 </UserControl>

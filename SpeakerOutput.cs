@@ -3,6 +3,9 @@ using NAudio.Wave;
 
 namespace MultiSpeaker;
 
+/// <summary>Which side of the stereo sound a speaker plays.</summary>
+public enum ChannelMode { Both, Left, Right }
+
 /// <summary>
 /// Plays the captured audio on one speaker after a configurable delay.
 /// Audio is held in a ring buffer; the playback rate is nudged by up to ±0.5%
@@ -37,6 +40,8 @@ sealed class SpeakerOutput : IWaveProvider, IDisposable
     public volatile int DelayMs;
     /// <summary>Plays silence while keeping timing intact; used while measuring other speakers.</summary>
     public volatile bool Muted;
+    /// <summary>Left or Right plays that side on all of this speaker's drivers.</summary>
+    public volatile ChannelMode Channel;
 
     /// <summary>Raised from the audio thread when playback stops; the exception is null on a normal stop.</summary>
     public event Action<SpeakerOutput, Exception?>? Stopped;
@@ -66,6 +71,7 @@ sealed class SpeakerOutput : IWaveProvider, IDisposable
     /// <summary>Called from the capture thread with interleaved float samples.</summary>
     public void Write(float[] source, int frames, int sourceChannels)
     {
+        var mode = Channel;
         lock (sync)
         {
             for (int f = 0; f < frames; f++)
@@ -76,6 +82,8 @@ sealed class SpeakerOutput : IWaveProvider, IDisposable
                 {
                     ring[dst + c] =
                         sourceChannels == 1 ? source[src] :
+                        mode == ChannelMode.Left ? source[src] :
+                        mode == ChannelMode.Right ? source[src + 1] :
                         channels == 1 ? (source[src] + source[src + 1]) * 0.5f :
                         c < sourceChannels ? source[src + c] : 0f;
                 }
