@@ -131,7 +131,23 @@
             <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
                 <Image Source="/Assets/MultiSpeaker.ico" Width="18" Height="18" />
                 <TextBlock Text="MultiSpeaker" Margin="10,0,0,0" FontSize="12" VerticalAlignment="Center" />
-                <TextBlock x:Name="VersionText" Margin="8,0,0,0" FontSize="11" VerticalAlignment="Center" Style="{StaticResource MutedText}" />
+                <TextBlock Text="-" Margin="6,0" FontSize="12" VerticalAlignment="Center" Style="{StaticResource MutedText}" />
+                <!-- Clickable inside the title bar: chrome hit-testing would otherwise treat it as a drag area -->
+                <TextBlock Text="PrabinCode" FontSize="12" VerticalAlignment="Center" Cursor="Hand"
+                           WindowChrome.IsHitTestVisibleInChrome="True" MouseLeftButtonUp="OnRepoLinkClick"
+                           ToolTip="{x:Static local:MainWindow.RepoUrl}">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock" BasedOn="{StaticResource MutedText}">
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+                                    <Setter Property="TextDecorations" Value="Underline" />
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock x:Name="VersionText" Margin="6,0,0,0" FontSize="11" VerticalAlignment="Center" Style="{StaticResource MutedText}" />
             </StackPanel>
             <StackPanel Grid.Column="1" Orientation="Horizontal">
                 <Button x:Name="ThemeButton" Style="{StaticResource CaptionButton}" FontSize="14" Click="OnThemeClick" />
@@ -154,7 +170,7 @@
 
             <TextBlock Text="Sound source" FontSize="14" FontWeight="SemiBold" />
             <TextBlock Grid.Row="1" Style="{StaticResource MutedText}" Margin="0,2,0,0"
-                       Text="The device Windows plays to. Its sound is copied to the speakers you tick below." TextWrapping="Wrap" />
+                       Text="Your laptop's sound output, the same as in the Windows sound menu. Its sound is copied to the speakers you tick below." TextWrapping="Wrap" />
             <ComboBox x:Name="SourceBox" Grid.Row="2" Margin="0,8,0,20" HorizontalAlignment="Stretch" Style="{StaticResource FastComboBox}"
                       DisplayMemberPath="Name" SelectionChanged="OnSourceChanged" />
 

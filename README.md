@@ -42,11 +42,10 @@ Get the latest version from the [**Releases**](../../releases/latest) page.
 ## Quick start
 
 1. **Connect your speakers** in Windows Settings → Bluetooth & devices.
-2. **Make the slowest speaker the Windows default output.** That speaker plays the sound directly and can't be delayed, so it should be the one that lags most. If you don't know which one that is, pick any; **Sync delay** will tell you if you should switch.
-3. Open MultiSpeaker. Leave **Sound source** on *Windows default output*.
-4. **Tick the other speakers** and press **Start**.
-5. **Pause your music**, place the laptop where you sit, and press **Sync delay**, then **Match volume**.
-6. Turn on **Link volumes** if you want one volume control for all speakers.
+2. Open MultiSpeaker and set **Sound source** to the **slowest** speaker. This also makes it your Windows sound output (the same setting as the taskbar's sound menu, and changing it there updates the app too). The source plays the sound directly and can't be delayed, so it should be the one that lags most. If you don't know which one that is, pick any; **Sync delay** will tell you if you should switch.
+3. **Tick the other speakers** and press **Start**.
+4. **Pause your music**, place the laptop where you sit, and press **Sync delay**, then **Match volume**.
+5. Turn on **Link volumes** if you want one volume control for all speakers.
 
 You can always fine-tune by ear with the **−/+** buttons next to each speaker's volume and delay.
 
@@ -76,10 +75,10 @@ You can always fine-tune by ear with the **−/+** buttons next to each speaker'
 |---|---|
 | Stuttering or crackling | Your Bluetooth adapter is overloaded. Two speakers usually work well; three or more can be too much. Move the speakers closer to the PC or put Wi-Fi on 5 GHz. |
 | One speaker is still slightly ahead or behind | Fine-tune its delay by 10 ms steps, or run **Sync delay** again with the room quiet. |
-| "Still … ms late at 0 ms delay" | That speaker is slower than the source. Make it the Windows default output instead. |
+| "Still … ms late at 0 ms delay" | That speaker is slower than the source. Choose it as the **Sound source** instead. |
 | A speaker sounds quiet even at 100 % | Turn up the speaker's own volume buttons, or lower the source speaker and run **Match volume** again. |
 | "Couldn't hear …" during Sync delay or Match volume | Check that the microphone is on, turn the speakers up, and keep the laptop near them. |
-| Want every speaker to be adjustable | Set the Windows default output to a virtual device you don't listen to (for example VB-CABLE), choose it as the sound source, then tick all real speakers. |
+| Want every speaker to be adjustable | Install a virtual audio device you don't listen to (for example VB-CABLE), choose it as the **Sound source**, then tick all real speakers. |
 
 ## Build from source
 
@@ -114,6 +113,7 @@ Every push and pull request is also built, and the files are attached to the wor
 | `NumberBox.xaml(.cs)` | The −/+ number box |
 | `ThemeManager.cs` | Light and dark theme |
 | `DeviceWatcher.cs` | Listens for speakers connecting and disconnecting |
+| `DefaultAudioDevice.cs` | Sets the Windows default output when you pick a sound source |
 | `AppSettings.cs` | Settings saved in `%APPDATA%\MultiSpeaker` |
 
 ## Acknowledgements

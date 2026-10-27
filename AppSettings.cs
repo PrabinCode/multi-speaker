@@ -12,7 +12,6 @@ sealed class SpeakerSettings
 /// <summary>Remembers the chosen source and per-speaker delays in %APPDATA%\MultiSpeaker.</summary>
 sealed class AppSettings
 {
-    public string? SourceDeviceId { get; set; }
     public bool? DarkMode { get; set; }  // null = follow Windows
     public bool LinkVolumes { get; set; }
     public Dictionary<string, SpeakerSettings> Speakers { get; set; } = [];

@@ -10,7 +10,7 @@ namespace MultiSpeaker;
 
 public partial class MainWindow : Window
 {
-    sealed record SourceItem(MMDevice? Device, string Name)
+    sealed record SourceItem(MMDevice Device, string Name)
     {
         public override string ToString() => Name;  // shown in the dropdown's selection box
     }
@@ -41,7 +41,7 @@ public partial class MainWindow : Window
         darkMode = settings.DarkMode ?? ThemeManager.SystemPrefersDark();
         ThemeManager.Apply(darkMode);  // before the controls are created so they pick up the theme
         InitializeComponent();
-        VersionText.Text = AppVersion();
+        VersionText.Text = $"({AppVersion()})";
         UpdateThemeButton();
         SpeakerList.ItemsSource = rows;
         SourceBox.ItemsSource = sources;
@@ -70,6 +70,11 @@ public partial class MainWindow : Window
     }
 
     // ---- Title bar ----
+
+    public const string RepoUrl = "https://github.com/PrabinCode/multi-speaker";
+
+    void OnRepoLinkClick(object sender, System.Windows.Input.MouseButtonEventArgs e) =>
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(RepoUrl) { UseShellExecute = true });
 
     /// <summary>"v1.2.3" for release builds, "dev" for local ones.</summary>
     static string AppVersion()
@@ -140,7 +145,6 @@ public partial class MainWindow : Window
             row.Dispose();
         rows.Clear();
         sources.Clear();
-        sources.Add(new SourceItem(null, "Windows default output"));
 
         var devices = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).OrderBy(d => d.FriendlyName);
         foreach (var device in devices)
@@ -157,10 +161,17 @@ public partial class MainWindow : Window
             sources.Add(new SourceItem(device, device.FriendlyName));
         }
 
-        // Keep the saved source selected; if it is unplugged, fall back to the Windows default.
-        SourceBox.SelectedItem = sources.FirstOrDefault(s => s.Device != null && s.Device.ID == settings.SourceDeviceId) ?? sources[0];
+        // The source is always the Windows default output, so the dropdown mirrors it.
+        string? defaultId = DefaultOutputId();
+        SourceBox.SelectedItem = sources.FirstOrDefault(s => s.Device.ID == defaultId);
         loading = false;
         UpdateSourceMarker();
+    }
+
+    string? DefaultOutputId()
+    {
+        try { return enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia).ID; }
+        catch (COMException) { return null; }  // no output device at all
     }
 
     MMDevice ResolveSource() =>
@@ -222,9 +233,26 @@ public partial class MainWindow : Window
 
     void OnSourceChanged(object sender, SelectionChangedEventArgs e)
     {
-        if (loading)
+        if (loading || SourceBox.SelectedItem is not SourceItem item || item.Device.ID == DefaultOutputId())
             return;
-        settings.SourceDeviceId = (SourceBox.SelectedItem as SourceItem)?.Device?.ID;
+
+        // Make it the laptop's sound output, so apps actually play to the device we copy from.
+        try
+        {
+            DefaultAudioDevice.Set(item.Device.ID);
+        }
+        catch (Exception ex)
+        {
+            MessageBox.Show(this, $"Couldn't make {item.Name} the Windows sound output.\n\n{ex.Message}",
+                "Sound source", MessageBoxButton.OK, MessageBoxImage.Warning);
+            loading = true;
+            SourceBox.SelectedItem = sources.FirstOrDefault(s => s.Device.ID == DefaultOutputId());
+            loading = false;
+            return;
+        }
+
+        // Handled here right away; the device notification that follows sees nothing new.
+        deviceSignature = DeviceSignature();
         UpdateSourceMarker();
         if (wantRunning)
             Restart();
@@ -269,9 +297,7 @@ public partial class MainWindow : Window
     /// <summary>Identifies the set of active outputs plus the default, so irrelevant notifications are ignored.</summary>
     string DeviceSignature()
     {
-        string defaultId = "";
-        try { defaultId = enumerator.GetDefaultAudioEndpoint(DataFlow.Render, Role.Multimedia).ID; }
-        catch (COMException) { }
+        string defaultId = DefaultOutputId() ?? "";
         var ids = enumerator.EnumerateAudioEndPoints(DataFlow.Render, DeviceState.Active).Select(d => d.ID).Order();
         return defaultId + "|" + string.Join(";", ids);
     }
@@ -459,7 +485,6 @@ public partial class MainWindow : Window
 
     void SaveSettings()
     {
-        settings.SourceDeviceId = (SourceBox.SelectedItem as SourceItem)?.Device?.ID;
         foreach (var row in rows)
             settings.Speakers[row.Device.ID] = new SpeakerSettings { Enabled = row.IsChecked, DelayMs = row.DelayMs };
         settings.Save();
