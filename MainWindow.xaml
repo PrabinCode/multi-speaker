@@ -1,0 +1,229 @@
+<Window x:Class="MultiSpeaker.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:local="clr-namespace:MultiSpeaker"
+        Title="MultiSpeaker" Width="680" Height="500" MinWidth="540" MinHeight="360"
+        WindowStartupLocation="CenterScreen" Icon="/Assets/MultiSpeaker.ico"
+        Background="{DynamicResource WindowBackgroundBrush}"
+        Foreground="{DynamicResource TextBrush}">
+
+    <!-- Custom title bar: the client area covers the whole window, but dragging, snapping and resizing still work. -->
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="40" ResizeBorderThickness="6" GlassFrameThickness="0"
+                      CornerRadius="0" UseAeroCaptionButtons="False" />
+    </WindowChrome.WindowChrome>
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
+
+        <Style x:Key="CaptionButton" TargetType="Button">
+            <Setter Property="Width" Value="46" />
+            <Setter Property="Height" Value="40" />
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
+            <Setter Property="FontSize" Value="10" />
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="WindowChrome.IsHitTestVisibleInChrome" Value="True" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CaptionHoverBrush}" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="{DynamicResource CaptionPressedBrush}" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="CloseButton" TargetType="Button" BasedOn="{StaticResource CaptionButton}">
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#C42B1C" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#A82418" />
+                    <Setter Property="Foreground" Value="White" />
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <!-- Lean dropdown: the Fluent one opens a transparent, shadowed, animated popup that feels laggy.
+             This popup is opaque and unanimated, so it opens and closes instantly. -->
+        <Style x:Key="ComboToggle" TargetType="ToggleButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="ClickMode" Value="Press" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToggleButton">
+                        <Border x:Name="Chrome" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}"
+                                BorderThickness="1" CornerRadius="4">
+                            <TextBlock Text="&#xE70D;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="10"
+                                       HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0"
+                                       Foreground="{DynamicResource MutedTextBrush}" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Chrome" Property="Background" Value="{DynamicResource CaptionHoverBrush}" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="FastComboBox" TargetType="ComboBox">
+            <Setter Property="Foreground" Value="{DynamicResource TextBrush}" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ComboBox">
+                        <Grid>
+                            <ToggleButton Style="{StaticResource ComboToggle}"
+                                          IsChecked="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}" />
+                            <ContentPresenter IsHitTestVisible="False" Margin="12,0,36,0" VerticalAlignment="Center"
+                                              Content="{TemplateBinding SelectionBoxItem}"
+                                              ContentTemplate="{TemplateBinding SelectionBoxItemTemplate}"
+                                              ContentStringFormat="{TemplateBinding SelectionBoxItemStringFormat}" />
+                            <Popup x:Name="PART_Popup" Placement="Bottom" VerticalOffset="4" Focusable="False"
+                                   AllowsTransparency="False" PopupAnimation="None"
+                                   IsOpen="{Binding IsDropDownOpen, Mode=TwoWay, RelativeSource={RelativeSource TemplatedParent}}">
+                                <Border MinWidth="{Binding ActualWidth, RelativeSource={RelativeSource TemplatedParent}}"
+                                        MaxHeight="{TemplateBinding MaxDropDownHeight}" Padding="4"
+                                        Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}" BorderThickness="1">
+                                    <ScrollViewer>
+                                        <ItemsPresenter KeyboardNavigation.DirectionalNavigation="Contained" />
+                                    </ScrollViewer>
+                                </Border>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="MutedText" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource MutedTextBrush}" />
+        </Style>
+    </Window.Resources>
+
+    <Grid x:Name="RootGrid">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="40" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Title bar -->
+        <Grid>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                <Image Source="/Assets/MultiSpeaker.ico" Width="18" Height="18" />
+                <TextBlock Text="MultiSpeaker" Margin="10,0,0,0" FontSize="12" VerticalAlignment="Center" />
+            </StackPanel>
+            <StackPanel Grid.Column="1" Orientation="Horizontal">
+                <Button x:Name="ThemeButton" Style="{StaticResource CaptionButton}" FontSize="14" Click="OnThemeClick" />
+                <Button Style="{StaticResource CaptionButton}" Content="&#xE921;" ToolTip="Minimize to tray" Click="OnMinimizeClick" />
+                <Button x:Name="MaximizeButton" Style="{StaticResource CaptionButton}" Content="&#xE922;" Click="OnMaximizeClick" />
+                <Button Style="{StaticResource CloseButton}" Content="&#xE8BB;" ToolTip="Close" Click="OnCloseClick" />
+            </StackPanel>
+        </Grid>
+
+        <!-- Content -->
+        <Grid x:Name="ContentGrid" Grid.Row="1" Margin="20,8,20,20">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <TextBlock Text="Sound source" FontSize="14" FontWeight="SemiBold" />
+            <TextBlock Grid.Row="1" Style="{StaticResource MutedText}" Margin="0,2,0,0"
+                       Text="The device Windows plays to. Its sound is copied to the speakers you tick below." TextWrapping="Wrap" />
+            <ComboBox x:Name="SourceBox" Grid.Row="2" Margin="0,8,0,20" HorizontalAlignment="Stretch" Style="{StaticResource FastComboBox}"
+                      DisplayMemberPath="Name" SelectionChanged="OnSourceChanged" />
+
+            <DockPanel Grid.Row="3" Margin="0,0,0,8">
+                <CheckBox x:Name="LinkVolumesBox" DockPanel.Dock="Right" Content="Link volumes"
+                          Checked="OnLinkVolumesChanged" Unchecked="OnLinkVolumesChanged"
+                          ToolTip="Changing one speaker's volume (or using your keyboard volume keys) changes every speaker in use by the same ratio. Untick to adjust one speaker on its own." />
+                <TextBlock Text="Speakers" FontSize="14" FontWeight="SemiBold" VerticalAlignment="Center" />
+            </DockPanel>
+
+            <Border Grid.Row="4" Background="{DynamicResource CardBrush}" BorderBrush="{DynamicResource CardBorderBrush}"
+                    BorderThickness="1" CornerRadius="8" Grid.IsSharedSizeScope="True">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <Grid Margin="16,12,16,4">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Volume" />
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="Delay" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Text="Speaker" Style="{StaticResource MutedText}" />
+                        <TextBlock Grid.Column="1" Text="Volume (%)" Style="{StaticResource MutedText}" Margin="16,0,0,0" />
+                        <TextBlock Grid.Column="2" Text="Delay (ms)" Style="{StaticResource MutedText}" Margin="16,0,0,0" />
+                    </Grid>
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl x:Name="SpeakerList" Margin="16,0,16,8">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate DataType="{x:Type local:SpeakerRow}">
+                                    <Grid Margin="0,5">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="*" />
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="Volume" />
+                                            <ColumnDefinition Width="Auto" SharedSizeGroup="Delay" />
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel VerticalAlignment="Center">
+                                            <CheckBox IsChecked="{Binding IsChecked}" IsEnabled="{Binding CanEditDelay}">
+                                                <!-- Explicit color keeps the name readable when the box is disabled -->
+                                                <TextBlock Text="{Binding Name}" Foreground="{DynamicResource TextBrush}" TextTrimming="CharacterEllipsis" />
+                                            </CheckBox>
+                                            <TextBlock Text="Source · plays directly" FontSize="11" Margin="28,0,0,0"
+                                                       Style="{StaticResource MutedText}"
+                                                       Visibility="{Binding IsSource, Converter={StaticResource BoolToVisibility}}" />
+                                        </StackPanel>
+                                        <local:NumberBox Grid.Column="1" Width="140" Margin="16,0,0,0" VerticalAlignment="Center"
+                                                         Value="{Binding Volume}" Maximum="100" Step="1"
+                                                         IsEnabled="{Binding HasVolume}" />
+                                        <local:NumberBox Grid.Column="2" Width="140" Margin="16,0,0,0" VerticalAlignment="Center"
+                                                         Value="{Binding DelayMs}" Maximum="2000" Step="10"
+                                                         IsEnabled="{Binding CanEditDelay}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+
+            <DockPanel Grid.Row="5" Margin="0,16,0,0">
+                <Button x:Name="StartButton" Content="Start" MinWidth="100" Style="{DynamicResource AccentButtonStyle}" Click="OnStartClick" />
+                <Button x:Name="SyncDelayButton" Content="Sync delay" Margin="8,0,0,0" IsEnabled="False" Click="OnSyncDelayClick"
+                        ToolTip="Measures each speaker with your microphone and sets its delay so all play in time. Pause your music first." />
+                <Button x:Name="MatchVolumeButton" Content="Match volume" Margin="8,0,0,0" IsEnabled="False" Click="OnMatchVolumeClick"
+                        ToolTip="Measures each speaker with your microphone and sets its volume as loud as the source. Pause your music first." />
+                <Button x:Name="RefreshButton" Content="Refresh devices" Margin="8,0,0,0" Click="OnRefreshClick" />
+                <TextBlock x:Name="StatusText" Text="Stopped" Margin="14,0,0,0" VerticalAlignment="Center"
+                           Style="{StaticResource MutedText}" TextTrimming="CharacterEllipsis" />
+            </DockPanel>
+        </Grid>
+    </Grid>
+</Window>
